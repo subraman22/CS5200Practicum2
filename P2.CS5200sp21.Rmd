@@ -16,10 +16,13 @@ library(knitr)
 
 ##### creating databse connection
 ```{r}
-fpath = "/Users/rohan/Documents/Masters/5200Databases/Practicum2/"
-dbfile = "part1.db"
+path <- "/Users/rohan/Documents/Masters/5200Databases/Practicum2/"
+fn <- "pubmed_sample.xml"
+fpn = paste0(path, fn)
+dbfn <- "part1.db"
+dbfpn = paste0(path, dbfn)
 
-part1db <- dbConnect(RSQLite::SQLite(), paste0(fpath, dbfile))
+part1db <- dbConnect(RSQLite::SQLite(), dbfpn)
 ```
 
 ```{sql connection=part1db}
@@ -42,7 +45,8 @@ CREATE TABLE IF NOT EXISTS Journal (
   ISSN TEXT NOT NULL,
   volume INT NOT NULL,
   issue INT NOT NULL,
-  pubDate TEXT NOT NULL,
+  pubYear TEXT NOT NULL,
+  pubMonth TEXT,
   title TEXT NOT NULL,
   ISOabbreviation TEXT NOT NULL
 )
@@ -52,8 +56,7 @@ CREATE TABLE IF NOT EXISTS Author (
   author_id INT PRIMARY KEY,
   lname TEXT NOT NULL,
   fname TEXT NOT NULL,
-  initials TEXT NOT NULL,
-  affiliation TEXT
+  initials TEXT NOT NULL
 )
 ```
 ```{sql connection=part1db}
@@ -84,3 +87,140 @@ WHERE
     type ='table' AND 
     name NOT LIKE 'sqlite_%';
 ```
+
+##### Part 1 #3
+```{r}
+# Reading the XML file and parse into DOM
+xmlDOM <- xmlParse(file = fpn)
+
+# get the root node of the DOM tree
+r <- xmlRoot(xmlDOM)
+
+# get number of children of root (number of articles)
+numArticle <- xmlSize(r)
+
+# create various data frames to hold data; initial values are just
+# to define data type and length and will be replaced; pre-allocation
+# is better for performance than dynamic allocation of memory
+Article.df <- data.frame (article_id = vector (mode = "integer", 
+                                     length = numArticle),
+                     journal_id = vector (mode = "integer", 
+                                         length = numArticle),
+                     title = vector (mode = "character", 
+                                       length = numArticle),
+                     pagination = vector (mode = "chacter", 
+                                        length = numArticle),
+                     eLocationID = vector (mode = "character", 
+                                        length = numArticle),
+                     language = vector (mode = "character", 
+                                        length = numArticle),
+                     stringsAsFactors = F)
+
+Journal.df <- data.frame (jid = integer(),
+                          issn = character(),
+                          volume = character(),
+                          issue = character(),
+                          pubYear = character(),
+                          pubMonth = character(),
+                          title = character(),
+                          ISOabbrev = character(),
+                          stringsAsFactors = F)
+
+Author.df <- data.frame (aid = integer(),
+                       lname = character(),
+                       fname = character(),
+                       initials = character(),
+                       stringsAsFactors = F)
+
+Authorship.df <- data.frame (articleID = integer(),
+                       authorID = integer(),
+                       stringsAsFactors = F)
+
+```
+
+```{r}
+parseJournal <- function (aJournalNode)
+{
+  # parse the address into its components
+  issn <- xmlValue(aJournalNode[[1]])
+  issueNode <- aJournalNode[[2]]
+  title <- xmlValue(aJournalNode[[3]])
+  ISOabbrev <- xmlValue(aJournalNode[[4]])
+  
+  volume <- xmlValue(issueNode[[1]])
+  issue <- xmlValue(issueNode[[2]])
+  dateNode <- issueNode[[3]]
+  
+  # Check if the PubDate is a MedlineDate type
+  if (xmlName(dateNode[[1]]) == "MedlineDate") {
+    pubDate <- xmlValue(dateNode[[1]])
+    pubYear <- substr(pubDate, 1, 4)
+    pubMonth <- substr(pubDate 6, 8)
+  } else { # Otherwise it's in Year and Month format
+    pubYear <- xmlValue(dateNode[[1]])
+    pubMonth <- xpathSApply(dateNode, "./Month", xmlValue)
+  }
+  
+  newJournal.df <- data.frame(issn, volume, issue, pubYear, 
+                              pubMonth, title, ISOabbrev, 
+                           stringsAsFactors = F)
+  
+  return(newJournal.df)
+}
+
+parseAuthors <- function(AuthorListNode)
+{
+  newAuthors.df <- data.frame (lname = character(),
+                                fname = character(),
+                                initials = character(),
+                                stringsAsFactors = F)
+
+  n <- xmlSize(AuthorListNode)
+  
+  # extract each of the <Author> nodes under <AuthorList>
+  for (m in 1:n)
+  {
+    anAuthor <- AuthorListNode[[m]]
+    lname <- xmlValue(anAuthor[[1]])
+    fname <- xmlValue(anAuthor[[2]])
+    initials <- xmlValue(anAuthor[[3]])
+
+    newAuthors.df[m,1] <- lname
+    newAuthors.df[m,2] <- fname
+    newAuthors.df[m,3] <- initials
+  }
+  
+  return(newAuthors.df)
+}
+
+# Taken from Prof. Schedlbauer's "Parsing an XML Document and Saving to SQL Database"
+rowExists <- function (aRow, aDF)
+{
+  # check if that address is already in the data frame
+  n <- nrow(aDF)
+  c <- ncol(aDF)
+  if (n == 0)
+  {
+    # data frame is empty, so can't exist
+    return(0)
+  }
+  for (a in 1:n)
+  {
+    # check if all columns match for a row; ignore the aID column
+    if (all(aDF[a,] == aRow[1,]))
+    {
+      # found a match; return it's ID
+      return(a)
+    }
+  }
+  # none matched
+  return(0)
+}
+```
+
+
+
+```{r}
+dbDisconnect(part1db)
+```
+
