@@ -1,0 +1,86 @@
+---
+title: "Practicum 2"
+output: html_notebook
+---
+
+##### Import statements
+```{r}
+library(RSQLite)
+library(XML)
+library(DBI)
+library(knitr)
+```
+
+##### ERD for the schema
+![Database ERD]()
+
+##### creating databse connection
+```{r}
+fpath = "/Users/rohan/Documents/Masters/5200Databases/Practicum2/"
+dbfile = "part1.db"
+
+part1db <- dbConnect(RSQLite::SQLite(), paste0(fpath, dbfile))
+```
+
+```{sql connection=part1db}
+DROP TABLE IF EXISTS Article;
+```
+```{sql connection=part1db}
+DROP TABLE IF EXISTS Authorship;
+```
+```{sql connection=part1db}
+DROP TABLE IF EXISTS Author;
+```
+```{sql connection=part1db}
+DROP TABLE IF EXISTS Journal;
+```
+
+##### Create table schema
+```{sql connection=part1db}
+CREATE TABLE IF NOT EXISTS Journal (
+  jornal_id INT PRIMARY KEY,
+  ISSN TEXT NOT NULL,
+  volume INT NOT NULL,
+  issue INT NOT NULL,
+  pubDate TEXT NOT NULL,
+  title TEXT NOT NULL,
+  ISOabbreviation TEXT NOT NULL
+)
+```
+```{sql connection=part1db}
+CREATE TABLE IF NOT EXISTS Author (
+  author_id INT PRIMARY KEY,
+  lname TEXT NOT NULL,
+  fname TEXT NOT NULL,
+  initials TEXT NOT NULL,
+  affiliation TEXT
+)
+```
+```{sql connection=part1db}
+CREATE TABLE IF NOT EXISTS Article (
+  article_id INT PRIMARY KEY,
+  journal_id INT NOT NULL,
+  title TEXT NOT NULL,
+  pagination TEXT,
+  eLocationID TEXT,
+  language TEXT,
+  FOREIGN KEY (journal_id) REFERENCES Journal(journal_id)
+)
+```
+```{sql connection=part1db}
+CREATE TABLE IF NOT EXISTS Authorship (
+  author_id INT NOT NULL,
+  article_id INT NOT NULL,
+  FOREIGN KEY (author_id) REFERENCES Author(author_id),
+  FOREIGN KEY (article_id) REFERENCES Article(article_id)
+)
+```
+```{sql connection=part1db}
+SELECT 
+    name
+FROM 
+    sqlite_master 
+WHERE 
+    type ='table' AND 
+    name NOT LIKE 'sqlite_%';
+```
