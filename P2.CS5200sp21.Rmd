@@ -12,7 +12,7 @@ library(knitr)
 ```
 
 ##### ERD for the schema
-![Database ERD]()
+![Transactional Database ERD](Part1ERD.png)
 
 ##### creating databse connection
 ```{r}
@@ -120,8 +120,8 @@ Journal.df <- data.frame (jid = integer(),
                           issn = character(),
                           volume = integer(),
                           issue = integer(),
-                          pubYear = character(),
-                          pubMonth = character(),
+                          pubYear = integer(),
+                          pubMonth = integer(),
                           title = character(),
                           ISOabbrev = character(),
                           stringsAsFactors = F)
@@ -155,13 +155,16 @@ parseJournal <- function (aJournalNode)
   # Check if the PubDate is a MedlineDate type
   if (xmlName(dateNode[[1]]) == "MedlineDate") {
     pubDate <- xmlValue(dateNode[[1]])
-    pubYear <- substr(pubDate, 1, 4)
+    pubYear <- as.numeric(substr(pubDate, 1, 4))
     pubMonth <- substr(pubDate, 6, 8)
+    pubMonth <- match(pubMonth,month.abb)
   } else { # Otherwise it's in Year and Month format
     pubYear <- xmlValue(dateNode[[1]])
     pubMonth <- xpathSApply(dateNode, "./Month", xmlValue)
     if (length(pubMonth) == 0) {
-      pubMonth = NA
+      pubMonth <- NA
+    } else {
+      pubMonth <- match(pubMonth,month.abb)
     }
   }
   
@@ -313,8 +316,20 @@ Article.df
 Authorship.df
 Journal.df
 ```
+```{r}
+dbWriteTable(part1db, "Journal", Journal.df, overwrite = T)
+dbWriteTable(part1db, "Author", Author.df, overwrite = T)
+dbWriteTable(part1db, "Article", Article.df, overwrite = T)
+dbWriteTable(part1db, "Authorship", Authorship.df, overwrite = T)
 
 
+```
+
+```{sql connection=part1db}
+SELECT * FROM Authorship;
+```
+
+![Analytical Database ERD]()
 
 
 
