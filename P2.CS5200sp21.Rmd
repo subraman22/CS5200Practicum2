@@ -118,8 +118,8 @@ Article.df <- data.frame (article_id = vector (mode = "integer",
 
 Journal.df <- data.frame (jid = integer(),
                           issn = character(),
-                          volume = character(),
-                          issue = character(),
+                          volume = integer(),
+                          issue = integer(),
                           pubYear = character(),
                           pubMonth = character(),
                           title = character(),
@@ -148,8 +148,8 @@ parseJournal <- function (aJournalNode)
   title <- xmlValue(aJournalNode[[3]])
   ISOabbrev <- xmlValue(aJournalNode[[4]])
   
-  volume <- xmlValue(issueNode[[1]])
-  issue <- xmlValue(issueNode[[2]])
+  volume <- as.numeric(xmlValue(issueNode[[1]]))
+  issue <- as.numeric(xmlValue(issueNode[[2]]))
   dateNode <- issueNode[[3]]
   
   # Check if the PubDate is a MedlineDate type
@@ -226,7 +226,6 @@ rowExists <- function (aRow, aDF)
 ```{r}
 # iterate over the first-level child elements off the root:
 # the <PubmedArticle> elements
-
 for (i in 1:numArticle)
 {
   # get next article node
@@ -236,7 +235,7 @@ for (i in 1:numArticle)
   # Grab the PMID as article_id
   article_id <- as.numeric(xmlValue(medline[[1]]))
   
-  # article node can be 3rd or 4th child depending on if there's a revised date
+  # article node can be 4th or 5th child depending on if there's a revised date
   articleNode <- medline[[4]]
   if (xmlName(articleNode) != "Article") {
     articleNode <- medline[[5]]
@@ -251,6 +250,11 @@ for (i in 1:numArticle)
   eLocationID <- xmlValue(articleNode[[4]])
   authorList <- articleNode[[6]]
   language <- xmlValue(articleNode[[7]])
+  if (xmlName(authorList) != "AuthorList") {
+    authorList <- articleNode[[7]]
+    language <- xmlValue(articleNode[[8]])
+  }
+  
   
   # Process the journal entry
   journal <- parseJournal(journalNode)
@@ -279,7 +283,7 @@ for (i in 1:numArticle)
     if (pk.Author == 0) {
       # does not exist, so add to author table
       pk.Author <- nrow(Author.df) + 1
-      Author.df[pk.Author,2:ncol(Journal.df)] <- authors[j,]
+      Author.df[pk.Author,2:ncol(Author.df)] <- authors[j,]
       Author.df[pk.Author,1] <- pk.Author
       
       # also have to link to authorship table
@@ -293,6 +297,13 @@ for (i in 1:numArticle)
       Authorship.df[newrow,] <- authorship
     }
   }
+  
+  # Put the rest of the stuff into Article data frame
+  Article.df[i,1] <- article_id
+  Article.df[i,3] <- title
+  Article.df[i,4] <- pagination
+  Article.df[i,5] <- eLocationID
+  Article.df[i,6] <- language
 }
 ```
 
