@@ -10,7 +10,7 @@ library(XML)
 library(DBI)
 library(knitr)
 ```
-
+### Part 1
 ##### ERD for the schema
 ![Transactional Database ERD](Part1ERD.png)
 
@@ -136,6 +136,21 @@ Authorship.df <- data.frame (articleID = integer(),
                        authorID = integer(),
                        stringsAsFactors = F)
 
+authorList.df <- data.frame(aid = integer(),
+                       author1 = character(),
+                       author2 = character(),
+                       author3 = character(),
+                       author4 = character(),
+                       author5 = character(),
+                       author6 = character(),
+                       author7 = character(),
+                       author8 = character(),
+                       author9 = character(),
+                       author10 = character(),
+                      author11 = character(),
+                      author12 = character(),
+                       stringsAsFactors = F)
+
 ```
 
 ##### Helper functions
@@ -229,6 +244,7 @@ rowExists <- function (aRow, aDF)
 ```{r}
 # iterate over the first-level child elements off the root:
 # the <PubmedArticle> elements
+
 for (i in 1:numArticle)
 {
   # get next article node
@@ -280,9 +296,11 @@ for (i in 1:numArticle)
   
   # check each entry in authors if it's in the database already
   # We also link the authorship table to article and author in here
+  authorList.tempdf <- data.frame(matrix(NA, nrow = 1, ncol = 12))
+  
   for (j in 1:nrow(authors)) {
-    author.tempdf <- data.frame(authors$lname[j], authors$fname[j], authors$initials[j])
-    pk.Author <- rowExists(author.tempdf, Author.df[,2:4])
+    authorList.tempdf[1, j] <- paste0(authors$lname[j], ", ", authors$fname[j])
+    pk.Author <- rowExists(authors[j,], Author.df[,2:4])
     if (pk.Author == 0) {
       # does not exist, so add to author table
       pk.Author <- nrow(Author.df) + 1
@@ -300,6 +318,8 @@ for (i in 1:numArticle)
       Authorship.df[newrow,] <- authorship
     }
   }
+  authorList.df[i, 1] <- article_id
+  authorList.df[i,2:13] <- authorList.tempdf
   
   # Put the rest of the stuff into Article data frame
   Article.df[i,1] <- article_id
@@ -315,6 +335,7 @@ Author.df
 Article.df
 Authorship.df
 Journal.df
+authorList.df
 ```
 ```{r}
 dbWriteTable(part1db, "Journal", Journal.df, overwrite = T)
@@ -326,10 +347,15 @@ dbWriteTable(part1db, "Authorship", Authorship.df, overwrite = T)
 ```
 
 ```{sql connection=part1db}
-SELECT * FROM Authorship;
+SELECT *, COUNT(articleID)
+FROM Author 
+WHERE fname LIKE "Ya%Lin";
 ```
 
-![Analytical Database ERD]()
+Specifically with the author Ya Lin Chiu, there's 3 entries because there's 3
+different spellings that the rowExists function didn't pick up
+### Part 2
+![Analytical Database ERD](Part2ERD.png)
 
 
 
