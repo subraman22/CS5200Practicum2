@@ -357,6 +357,91 @@ different spellings that the rowExists function didn't pick up
 ### Part 2
 ![Analytical Database ERD](Part2ERD.png)
 
+```{sql connection=part1db}
+-- drop the tables if they already exist
+DROP TABLE IF EXISTS ArticleFact;
+```
+```{sql connection=part1db}
+DROP TABLE IF EXISTS AuthorListDim;
+```
+```{sql connection=part1db}
+DROP TABLE IF EXISTS JournalDim;
+```
+```{sql connection=part1db}
+DROP TABLE IF EXISTS QuarterDim;
+```
+
+
+do we need pubmonth and pubyear here? it's in quarter dim now
+
+```{sql connection=part1db}
+CREATE TABLE JournalDim
+   AS SELECT jid AS journalDim_id, ISSN, volume, issue, --pubYear, pubMonth,
+   title, ISOabbrev FROM Journal;
+```
+```{sql connection=part1db}
+CREATE TABLE AuthorListDim
+   AS SELECT * FROM authorList;
+```
+```{sql connection=part1db} 
+CREATE TABLE QuarterDim (
+  datetimedim_key INT PRIMARY KEY,
+  year INT,
+  quarter INT,
+  month INT
+);
+```
+```{sql connection=part1db}
+INSERT INTO QuarterDim (year, quarter, month)
+SELECT DISTINCT pubYear,
+CASE
+  WHEN pubMonth IN (1, 2, 3) THEN 1
+  WHEN pubMonth IN (4, 5, 6) THEN 2
+  WHEN pubMonth IN (7, 8, 9) THEN 3
+  WHEN pubMonth IN (10, 11, 12) THEN 4
+  ELSE 0
+END, pubMonth
+FROM Journal;
+
+```
+```{sql connection=part1db}
+UPDATE QuarterDim
+SET datetimedim_key = rowid 
+```
+
+
+```{sql connection=part1db}
+SELECT * FROM QuarterDim
+
+```
+```{sql connection=part1db}
+CREATE TABLE ArticleFact (
+journal_id INT,
+authorList_id INT,
+quarter_id INT,
+PRIMARY KEY (journal_id, authorList_id, quarter_id)
+);
+```
+
+```{sql connection=part1db}
+INSERT INTO ArticleFact
+SELECT a.journal_id, a.article_id, q.datetimedim_key
+FROM Article a
+JOIN Journal j ON a.journal_id = j.jid
+JOIN QuarterDim q ON j.pubYear = q.year AND j.pubMonth = q.month
+
+```
+
+```{sql connection=part1db}
+SELECT * FROM ArticleFact af
+JOIN AuthorListDim al ON al.aid = af.authorList_id
+
+```
+
+```{sql connection=part1db}
+SELECT Distinct ISSN FROM journal
+```
+
 
 
 
