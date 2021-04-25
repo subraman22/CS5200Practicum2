@@ -92,10 +92,13 @@ WHERE
 ```{r}
 # Reading the XML file and parse into DOM
 xmlDOM <- xmlParse(file = fpn)
+
 # get the root node of the DOM tree
 r <- xmlRoot(xmlDOM)
+
 # get number of children of root (number of articles)
 numArticle <- xmlSize(r)
+
 # create various data frames to hold data; initial values are just
 # to define data type and length and will be replaced; pre-allocation
 # is better for performance than dynamic allocation of memory
@@ -112,6 +115,7 @@ Article.df <- data.frame (article_id = vector (mode = "integer",
                      language = vector (mode = "character", 
                                         length = numArticle),
                      stringsAsFactors = F)
+
 Journal.df <- data.frame (jid = integer(),
                           issn = character(),
                           volume = integer(),
@@ -121,14 +125,17 @@ Journal.df <- data.frame (jid = integer(),
                           title = character(),
                           ISOabbrev = character(),
                           stringsAsFactors = F)
+
 Author.df <- data.frame (aid = integer(),
                        lname = character(),
                        fname = character(),
                        initials = character(),
                        stringsAsFactors = F)
+
 Authorship.df <- data.frame (articleID = integer(),
                        authorID = integer(),
                        stringsAsFactors = F)
+
 authorList.df <- data.frame(aid = integer(),
                        author1 = character(),
                        author2 = character(),
@@ -143,6 +150,7 @@ authorList.df <- data.frame(aid = integer(),
                       author11 = character(),
                       author12 = character(),
                        stringsAsFactors = F)
+
 ```
 
 ##### Helper functions
@@ -181,12 +189,14 @@ parseJournal <- function (aJournalNode)
   
   return(newJournal.df)
 }
+
 parseAuthors <- function(AuthorListNode)
 {
   newAuthors.df <- data.frame (lname = character(),
                                 fname = character(),
                                 initials = character(),
                                 stringsAsFactors = F)
+
   n <- xmlSize(AuthorListNode)
   
   # extract each of the <Author> nodes under <AuthorList>
@@ -196,6 +206,7 @@ parseAuthors <- function(AuthorListNode)
     lname <- xmlValue(anAuthor[[1]])
     fname <- xmlValue(anAuthor[[2]])
     initials <- xmlValue(anAuthor[[3]])
+
     newAuthors.df[m,1] <- lname
     newAuthors.df[m,2] <- fname
     newAuthors.df[m,3] <- initials
@@ -203,6 +214,7 @@ parseAuthors <- function(AuthorListNode)
   
   return(newAuthors.df)
 }
+
 # Taken from Prof. Schedlbauer's "Parsing an XML Document and Saving to SQL Database"
 rowExists <- function (aRow, aDF)
 {
@@ -232,6 +244,7 @@ rowExists <- function (aRow, aDF)
 ```{r}
 # iterate over the first-level child elements off the root:
 # the <PubmedArticle> elements
+
 for (i in 1:numArticle)
 {
   # get next article node
@@ -330,22 +343,20 @@ dbWriteTable(part1db, "Author", Author.df, overwrite = T)
 dbWriteTable(part1db, "Article", Article.df, overwrite = T)
 dbWriteTable(part1db, "Authorship", Authorship.df, overwrite = T)
 dbWriteTable(part1db, "authorList", authorList.df, overwrite = T)
+
 ```
 
 ```{sql connection=part1db}
-SELECT *
-FROM Author 
-WHERE fname LIKE "Ya%Lin";
+SELECT lname, fname, COUNT(articleID)
+FROM Authorship at
+JOIN Author a ON a.aid = at.authorID
+GROUP BY at.authorID
 ```
 
 Specifically with the author Ya Lin Chiu, there's 3 entries because there's 3
 different spellings that the rowExists function didn't pick up
 ### Part 2
 ![Analytical Database ERD](Part2ERD.png)
-
-
-![Analytical Database ERD]()
-
 ```{sql connection=part1db}
 -- drop the tables if they already exist
 DROP TABLE IF EXISTS ArticleFact;
@@ -374,7 +385,7 @@ CREATE TABLE AuthorListDim
 ```
 ```{sql connection=part1db} 
 CREATE TABLE QuarterDim (
-  datetimedim_key INT PRIMARY KEY,
+  q_key INT PRIMARY KEY,
   year INT,
   quarter INT,
   month INT
@@ -391,17 +402,15 @@ CASE
   ELSE 0
 END, pubMonth
 FROM Journal;
-
 ```
 ```{sql connection=part1db}
 UPDATE QuarterDim
-SET datetimedim_key = rowid 
+SET q_key = rowid 
 ```
 
 
 ```{sql connection=part1db}
-SELECT * FROM QuarterDim
-
+SELECT * FROM JournalDim
 ```
 ```{sql connection=part1db}
 CREATE TABLE ArticleFact (
@@ -414,23 +423,205 @@ PRIMARY KEY (journal_id, authorList_id, quarter_id)
 
 ```{sql connection=part1db}
 INSERT INTO ArticleFact
-SELECT a.journal_id, a.article_id, q.datetimedim_key
+SELECT a.journal_id, a.article_id, q.q_key
 FROM Article a
 JOIN Journal j ON a.journal_id = j.jid
 JOIN QuarterDim q ON j.pubYear = q.year AND j.pubMonth = q.month
+```
 
+
+```{sql connection=part1db}
+SELECT * FROM ArticleFact;
+```
+
+
+```{sql connection=part1db}
+DROP TABLE IF EXISTS JournalSummaryFact;
 ```
 
 ```{sql connection=part1db}
-SELECT * FROM ArticleFact af
-JOIN AuthorListDim al ON al.aid = af.authorList_id
-
+CREATE TABLE IF NOT EXISTS JournalSummaryFact(
+  journalISSN TEXT NOT NULL,
+  Q1_2012 INT,
+  Q2_2012 INT,
+  Q3_2012 INT,
+  Q4_2012 INT,
+  Q1_2013 INT,
+  FOREIGN KEY (journalISSN) REFERENCES JournalDim(ISSN)
+)
+```
+Insert the ISSN and zero out all the quarter counts
+```{sql connection=part1db}
+INSERT INTO JournalSummaryFact (journalISSN)
+SELECT DISTINCT issn
+FROM JournalDim;
+```
+```{sql connection=part1db}
+UPDATE JournalSummaryFact
+SET Q1_2012 = 0,
+    Q2_2012 = 0,
+    Q3_2012 = 0,
+    Q4_2012 = 0,
+    Q1_2013 = 0;
+```
+Update the quarter counts
+```{sql connection=part1db}
+UPDATE JournalSummaryFact
+SET Q1_2012 = Q1_2012 + 1
+FROM (SELECT a.journal_id, j.issn AS issn
+      FROM JournalDim j 
+      JOIN ArticleFact a ON a.journal_id = j.journalDim_id
+      JOIN QuarterDim q ON q.q_key = a.quarter_id
+      WHERE q.year == 2012 AND q.quarter == 1
+      GROUP BY issn) AS temp
+WHERE temp.issn == journalISSN;
+```
+```{sql connection=part1db}
+UPDATE JournalSummaryFact
+SET Q2_2012 = Q2_2012 + 1
+FROM (SELECT a.journal_id, j.issn AS issn
+      FROM JournalDim j 
+      JOIN ArticleFact a ON a.journal_id = j.journalDim_id
+      JOIN QuarterDim q ON q.q_key = a.quarter_id
+      WHERE q.year == 2012 AND q.quarter == 2
+      GROUP BY issn) AS temp
+WHERE temp.issn == journalISSN;
+```
+```{sql connection=part1db}
+UPDATE JournalSummaryFact
+SET Q3_2012 = Q3_2012 + 1
+FROM (SELECT a.journal_id, j.issn AS issn
+      FROM JournalDim j 
+      JOIN ArticleFact a ON a.journal_id = j.journalDim_id
+      JOIN QuarterDim q ON q.q_key = a.quarter_id
+      WHERE q.year == 2012 AND q.quarter == 3
+      GROUP BY issn) AS temp
+WHERE temp.issn == journalISSN;
+```
+```{sql connection=part1db}
+UPDATE JournalSummaryFact
+SET Q4_2012 = Q4_2012 + 1
+FROM (SELECT a.journal_id, j.issn AS issn
+      FROM JournalDim j 
+      JOIN ArticleFact a ON a.journal_id = j.journalDim_id
+      JOIN QuarterDim q ON q.q_key = a.quarter_id
+      WHERE q.year == 2012 AND q.quarter == 4
+      GROUP BY issn) AS temp
+WHERE temp.issn == journalISSN;
+```
+```{sql connection=part1db}
+UPDATE JournalSummaryFact
+SET Q1_2013 = Q1_2013 + 1
+FROM (SELECT a.journal_id, j.issn AS issn
+      FROM JournalDim j 
+      JOIN ArticleFact a ON a.journal_id = j.journalDim_id
+      JOIN QuarterDim q ON q.q_key = a.quarter_id
+      WHERE q.year == 2013 AND q.quarter == 1
+      GROUP BY issn) AS temp
+WHERE temp.issn == journalISSN;
 ```
 
 ```{sql connection=part1db}
-SELECT Distinct ISSN FROM journal
+SELECT * FROM JournalSummaryFact;
 ```
+Populate the Author Summary Fact table
+```{sql connection=part1db}
+DROP TABLE IF EXISTS AuthorSummaryFact;
+```
+```{sql connection=part1db}
+CREATE TABLE IF NOT EXISTS AuthorSummaryFact(
+  author_id INT NOT NULL,
+  name TEXT,
+  Q1_2012 INT,
+  Q2_2012 INT,
+  Q3_2012 INT,
+  Q4_2012 INT,
+  Q1_2013 INT,
+  FOREIGN KEY (author_id) REFERENCES Authorship(author_id)
+)
+```
+```{sql connection=part1db}
+INSERT INTO AuthorSummaryFact (author_id, name)
+SELECT DISTINCT at.authorID, lname || ", " || fname
+FROM Authorship at
+JOIN Author a ON a.aid = at.authorID;
+```
+```{sql connection=part1db}
+UPDATE AuthorSummaryFact
+SET Q1_2012 = 0,
+    Q2_2012 = 0,
+    Q3_2012 = 0,
+    Q4_2012 = 0,
+    Q1_2013 = 0;
+```
+```{sql connection=part1db}
+UPDATE AuthorSummaryFact
+SET Q1_2012 = Q1_2012 + temp.num
+FROM (SELECT at.authorID, COUNT(at.authorID) AS num
+      FROM Authorship at 
+      JOIN ArticleFact a ON a.authorList_id = at.articleID
+      JOIN QuarterDim q ON q.q_key = a.quarter_id
+      WHERE q.year == 2012 AND q.quarter == 1
+      GROUP BY at.authorID) AS temp
+WHERE temp.authorID == author_id
+;
+```
+```{sql connection=part1db}
+UPDATE AuthorSummaryFact
+SET Q2_2012 = Q2_2012 + temp.num
+FROM (SELECT at.authorID, COUNT(at.authorID) AS num
+      FROM Authorship at 
+      JOIN ArticleFact a ON a.authorList_id = at.articleID
+      JOIN QuarterDim q ON q.q_key = a.quarter_id
+      WHERE q.year == 2012 AND q.quarter == 2
+      GROUP BY at.authorID) AS temp
+WHERE temp.authorID == author_id
+;
+```
+```{sql connection=part1db}
+UPDATE AuthorSummaryFact
+SET Q3_2012 = Q3_2012 + temp.num
+FROM (SELECT at.authorID, COUNT(at.authorID) AS num
+      FROM Authorship at 
+      JOIN ArticleFact a ON a.authorList_id = at.articleID
+      JOIN QuarterDim q ON q.q_key = a.quarter_id
+      WHERE q.year == 2012 AND q.quarter == 3
+      GROUP BY at.authorID) AS temp
+WHERE temp.authorID == author_id
+;
+```
+```{sql connection=part1db}
+UPDATE AuthorSummaryFact
+SET Q4_2012 = Q4_2012 + temp.num
+FROM (SELECT at.authorID, COUNT(at.authorID) AS num
+      FROM Authorship at 
+      JOIN ArticleFact a ON a.authorList_id = at.articleID
+      JOIN QuarterDim q ON q.q_key = a.quarter_id
+      WHERE q.year == 2012 AND q.quarter == 4
+      GROUP BY at.authorID) AS temp
+WHERE temp.authorID == author_id
+;
+```
+```{sql connection=part1db}
+UPDATE AuthorSummaryFact
+SET Q1_2013 = Q1_2013 + temp.num
+FROM (SELECT at.authorID, COUNT(at.authorID) AS num
+      FROM Authorship at 
+      JOIN ArticleFact a ON a.authorList_id = at.articleID
+      JOIN QuarterDim q ON q.q_key = a.quarter_id
+      WHERE q.year == 2013 AND q.quarter == 1
+      GROUP BY at.authorID) AS temp
+WHERE temp.authorID == author_id
+;
+```
+```{sql connection=part1db}
+SELECT * FROM AuthorSummaryFact
+```
+
+### PART 3
+
 
 ```{r}
 dbDisconnect(part1db)
 ```
+
