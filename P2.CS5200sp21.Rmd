@@ -9,6 +9,7 @@ library(RSQLite)
 library(XML)
 library(DBI)
 library(knitr)
+library(sqldf)
 ```
 ### Part 1
 ##### ERD for the schema
@@ -356,7 +357,8 @@ GROUP BY at.authorID
 Specifically with the author Ya Lin Chiu, there's 3 entries because there's 3
 different spellings that the rowExists function didn't pick up
 ### Part 2
-![Analytical Database ERD](Part2ERD.png)
+##### Article fact table, one row per article
+![Analytical Database ERD 1](Part2ERD.png)
 ```{sql connection=part1db}
 -- drop the tables if they already exist
 DROP TABLE IF EXISTS ArticleFact;
@@ -414,6 +416,7 @@ SELECT * FROM JournalDim
 ```
 ```{sql connection=part1db}
 CREATE TABLE ArticleFact (
+title TEXT,
 journal_id INT,
 authorList_id INT,
 quarter_id INT,
@@ -423,7 +426,7 @@ PRIMARY KEY (journal_id, authorList_id, quarter_id)
 
 ```{sql connection=part1db}
 INSERT INTO ArticleFact
-SELECT a.journal_id, a.article_id, q.q_key
+SELECT a.title, a.journal_id, a.article_id, q.q_key
 FROM Article a
 JOIN Journal j ON a.journal_id = j.jid
 JOIN QuarterDim q ON j.pubYear = q.year AND j.pubMonth = q.month
@@ -433,7 +436,8 @@ JOIN QuarterDim q ON j.pubYear = q.year AND j.pubMonth = q.month
 ```{sql connection=part1db}
 SELECT * FROM ArticleFact;
 ```
-
+##### Number 2, summary fact tables
+![Analytical Summary Database ERD](Part2ERD2.png)
 
 ```{sql connection=part1db}
 DROP TABLE IF EXISTS JournalSummaryFact;
@@ -587,8 +591,7 @@ FROM (SELECT at.authorID, COUNT(at.authorID) AS num
       JOIN QuarterDim q ON q.q_key = a.quarter_id
       WHERE q.year == 2012 AND q.quarter == 3
       GROUP BY at.authorID) AS temp
-WHERE temp.authorID == author_id
-;
+WHERE temp.authorID == author_id;
 ```
 ```{sql connection=part1db}
 UPDATE AuthorSummaryFact
@@ -599,8 +602,7 @@ FROM (SELECT at.authorID, COUNT(at.authorID) AS num
       JOIN QuarterDim q ON q.q_key = a.quarter_id
       WHERE q.year == 2012 AND q.quarter == 4
       GROUP BY at.authorID) AS temp
-WHERE temp.authorID == author_id
-;
+WHERE temp.authorID == author_id;
 ```
 ```{sql connection=part1db}
 UPDATE AuthorSummaryFact
@@ -611,14 +613,62 @@ FROM (SELECT at.authorID, COUNT(at.authorID) AS num
       JOIN QuarterDim q ON q.q_key = a.quarter_id
       WHERE q.year == 2013 AND q.quarter == 1
       GROUP BY at.authorID) AS temp
-WHERE temp.authorID == author_id
-;
+WHERE temp.authorID == author_id;
 ```
 ```{sql connection=part1db}
 SELECT * FROM AuthorSummaryFact
 ```
 
 ### PART 3
+```{sql connection=part1db}
+SELECT SUM(Q1_2012) AS Winter2012Articles, 
+        SUM(Q1_2012) AS Spring2012Articles,
+        SUM(Q1_2012) AS Summer2012Articles,
+        SUM(Q1_2012) AS Fall2012Articles,
+        SUM(Q1_2013) AS Winter2013Articles
+FROM JournalSummaryFact;
+
+```
+```{sql connection=part1db}
+SELECT SUM(Q1_2012) AS Winter2012Authorship, 
+        SUM(Q1_2012) AS Spring2012Authorship,
+        SUM(Q1_2012) AS Summer2012Authorship,
+        SUM(Q1_2012) AS Fall2012Authorship,
+        SUM(Q1_2013) AS Winter2013Authorship
+FROM AuthorSummaryFact;
+```
+```{sql connection=part1db}
+SELECT name, Q1_2012 AS Winter2012Pubs, Q2_2012 AS Sprint2012Pubs, 
+        Q3_2012 AS Summer2012Pubs, Q4_2012 AS Fall2012Pubs, Q1_2013 AS Winter2013Pubs
+FROM AuthorSummaryFact
+WHERE Q1_2012 > 1 OR Q2_2012 > 1 OR Q3_2012 > 1 OR Q4_2012 > 1 OR Q1_2013 > 1;
+```
+```{sql connection=part1db}
+SELECT name, Q1_2012
+FROM AuthorSummaryFact
+ORDER BY Q1_2012 DESC;
+```
+```{sql connection=part1db}
+SELECT DISTINCT js.journalISSN, jd.ISOabbrev AS Abbreviation, Q1_2012
+FROM JournalSummaryFact js
+JOIN JournalDim jd ON js.journalISSN = jd.issn
+GROUP BY js.journalISSN
+```
+Plotting trends
+```{r}
+db.df <- sqldf("SELECT SUM(Q1_2012) AS Winter2012Authorship, 
+        SUM(Q1_2012) AS Spring2012Authorship,
+        SUM(Q1_2012) AS Summer2012Authorship,
+        SUM(Q1_2012) AS Fall2012Authorship,
+        SUM(Q1_2013) AS Winter2013Authorship
+FROM AuthorSummaryFact;", connection=part1db)
+
+barnames <- c("Q1 2012", "Q2 2012", "Q3 2012", "Q4 2012", "Q1 2013")
+vals <- as.matrix(db.df[1,])
+barplot(height=vals, names=barnames, xlab = "Quarter of Year",
+        ylab = "Total Authorship", main = "Authorship by Quarter")
+grid()
+```
 
 
 ```{r}
