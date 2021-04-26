@@ -377,9 +377,6 @@ DROP TABLE IF EXISTS JournalDim;
 DROP TABLE IF EXISTS QuarterDim;
 ```
 
-
-do we need pubmonth and pubyear here? it's in quarter dim now
-
 ```{sql connection=part1db}
 CREATE TABLE JournalDim
    AS SELECT jid AS journalDim_id, ISSN, volume, issue, --pubYear, pubMonth,
@@ -658,7 +655,8 @@ FROM JournalSummaryFact js
 JOIN JournalDim jd ON js.journalISSN = jd.issn
 GROUP BY js.journalISSN
 ```
-Plotting trends
+Plotting trends:
+
 ```{r}
 db.df <- sqldf("SELECT SUM(Q1_2012) AS Winter2012Authorship, 
         SUM(Q1_2012) AS Spring2012Authorship,
@@ -673,6 +671,8 @@ barplot(height=vals, names=barnames, xlab = "Quarter of Year",
         ylab = "Total Authorship", main = "Authorship by Quarter")
 grid()
 ```
+
+We can see in the bar graph above as well as the queries preceeding it that there does not appear to be any sort of trend relating to the seasonality of publishing. Authors and journals all publish year-round, not favoring any quarter over another. It is possible that our data set is somewhat limited and that more data could paint a more accurate picture. We could recreate the the database using a more extensive starting XML sheet to find out. 
 
 
 ```{r}
