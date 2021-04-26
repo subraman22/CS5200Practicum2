@@ -44,6 +44,7 @@ DROP TABLE IF EXISTS Journal;
 ```
 
 ##### Create table schema
+Note: CREATE SCHEMA is not used here as this is not included in SQLite. Instead, all tables of the transactional database as well as the star schema are tables in the same database.
 ```{sql connection=part1db}
 CREATE TABLE IF NOT EXISTS Journal (
   jornal_id INT PRIMARY KEY,
