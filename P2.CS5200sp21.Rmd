@@ -3,6 +3,10 @@ title: "Practicum 2"
 output: html_notebook
 ---
 
+# Practicum 2 Analytical Database Spring 2021
+### Robert Rega
+### Rohan Subramaniam
+
 ##### Import statements
 ```{r}
 library(RSQLite)
